@@ -324,5 +324,66 @@ class GymMCPClient:
         """Context manager exit."""
         self.close()
 
+    @property
+    def unwrapped(self) -> Any:
+        """
+        Return the underlying unwrapped environment, recursively unwrapping nested wrappers.
+
+        This property provides compatibility with Gymnasium's standard API
+        where environments expose an `unwrapped` attribute to access the
+        base environment without any wrappers.
+
+        Returns:
+            The underlying unwrapped environment (either from local mode or remote mode)
+        """
+        if self.mode == "local":
+            env = self.env
+            # Recursively unwrap if the env itself has unwrapped
+            # Stop if unwrapped points back to itself (base environment)
+            while hasattr(env, "unwrapped"):
+                unwrapped = env.unwrapped
+                if unwrapped is env:
+                    break
+                env = unwrapped
+            return env
+        elif self.mode == "remote":
+            # For remote mode, unwrapped might be the same as env or None
+            # depending on the remote server's implementation
+            return self.env if hasattr(self.env, "unwrapped") else None
+        else:
+            return self.env
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Forward attribute access to the underlying environment.
+
+        This allows transparent access to custom attributes and methods
+        of the wrapped environment, making GymMCPClient fully compatible
+        with code that expects direct access to environment internals.
+
+        Args:
+            name: The attribute name to access
+
+        Returns:
+            The requested attribute from the underlying environment
+
+        Raises:
+            AttributeError: If the attribute doesn't exist on either the
+                           client or the underlying environment
+        """
+        # Don't forward dunder methods or attributes that exist on self
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        # Don't forward unwrapped to avoid infinite recursion
+        if name == "unwrapped":
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        # Forward to underlying environment (only in local mode)
+        if self.mode == "local" and hasattr(self, "env") and self.env is not None:
+            return getattr(self.env, name)
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
     def __repr__(self) -> str:
         return f"GymMCPClient(env_id='{self.env_id}', mode='{self.mode}')"

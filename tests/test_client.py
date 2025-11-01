@@ -103,6 +103,73 @@ class TestLocalMode:
 
         env.close()
 
+    def test_unwrapped_property(self):
+        """Test unwrapped property returns underlying environment."""
+        env = GymMCPClient("CartPole-v1", mode="local")
+
+        # unwrapped should return the underlying gym environment
+        unwrapped_env = env.unwrapped
+        assert unwrapped_env is not None
+        assert unwrapped_env != env
+
+        # Should have the same observation and action spaces
+        assert unwrapped_env.observation_space == env.observation_space
+        assert unwrapped_env.action_space == env.action_space
+
+        env.close()
+
+    def test_unwrapped_recursive(self):
+        """Test that unwrapped recursively unwraps nested wrappers."""
+        # CartPole-v1 is wrapped by TimeLimit, so unwrapping should get the base CartPoleEnv
+        env = GymMCPClient("CartPole-v1", mode="local")
+
+        # unwrapped should recursively unwrap to the base CartPole env
+        unwrapped = env.unwrapped
+        assert unwrapped is not None
+        # Should be different from the wrapped env (TimeLimit)
+        assert unwrapped != env.env
+        # Should be the actual CartPoleEnv without any wrappers
+        import gymnasium.envs.classic_control.cartpole as cartpole
+
+        assert isinstance(unwrapped, cartpole.CartPoleEnv)
+
+        env.close()
+
+    def test_getattr_forwarding(self):
+        """Test that __getattr__ forwards to underlying environment."""
+        env = GymMCPClient("CartPole-v1", mode="local")
+
+        # Standard Gymnasium attributes should work
+        assert hasattr(env, "observation_space")
+        assert hasattr(env, "action_space")
+        assert hasattr(env, "metadata")
+
+        # Should be able to access the underlying env's spec
+        if hasattr(env.unwrapped, "spec"):
+            assert env.unwrapped.spec is not None
+
+        env.close()
+
+    def test_getattr_raises_for_dunder(self):
+        """Test that __getattr__ doesn't forward dunder methods."""
+        env = GymMCPClient("CartPole-v1", mode="local")
+
+        # Should raise AttributeError for dunder methods
+        with pytest.raises(AttributeError):
+            _ = env.__nonexistent_dunder__
+
+        env.close()
+
+    def test_getattr_raises_for_nonexistent(self):
+        """Test that __getattr__ raises for non-existent attributes."""
+        env = GymMCPClient("CartPole-v1", mode="local")
+
+        # Should raise AttributeError for non-existent attributes
+        with pytest.raises(AttributeError):
+            _ = env.nonexistent_attribute_12345
+
+        env.close()
+
 
 class TestRemoteMode:
     """Tests for remote mode functionality."""
