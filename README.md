@@ -19,7 +19,7 @@ A unified Python interface for working with both local and remote Gymnasium envi
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd gym-mcp-client
+cd agentring
 
 # Install with uv (recommended)
 uv sync
@@ -33,7 +33,7 @@ pip install -e .
 ### Local Mode
 
 ```python
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 # Create a local environment
 env = GymMCPClient("CartPole-v1", mode="local")
@@ -57,7 +57,7 @@ python -m gym_mcp_server --env CartPole-v1 --transport streamable-http --port 80
 Then connect to it:
 
 ```python
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 # Create a remote environment
 env = GymMCPClient(
@@ -77,7 +77,7 @@ env.close()
 ### Context Manager
 
 ```python
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 # Automatic cleanup
 with GymMCPClient("CartPole-v1", mode="local") as env:
@@ -93,7 +93,7 @@ The main benefit: write once, run anywhere!
 
 ```python
 import os
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 # Configuration from environment variables
 MODE = os.getenv("GYM_MODE", "local")
@@ -239,7 +239,7 @@ python main.py --mode local --episodes 3
 
 ```bash
 git clone <your-repo-url>
-cd gym-mcp-client
+cd agentring
 make install
 ```
 
@@ -285,7 +285,7 @@ make test
 ## Error Handling
 
 ```python
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 import httpx
 
 try:

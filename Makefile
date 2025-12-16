@@ -23,17 +23,17 @@ test:
 
 lint:
 	@echo "Running ruff linter..."
-	uv run ruff check gym_mcp_client/ tests/ examples/
+	uv run ruff check agentring/ tests/ examples/
 
 format:
 	@echo "Formatting code with ruff..."
-	uv run ruff format gym_mcp_client/ tests/ examples/
+	uv run ruff format agentring/ tests/ examples/
 	@echo "Auto-fixing linting issues..."
-	uv run ruff check --fix gym_mcp_client/ tests/ examples/
+	uv run ruff check --fix agentring/ tests/ examples/
 
 typecheck:
 	@echo "Running mypy type checker..."
-	uv run mypy gym_mcp_client/ --strict --pretty
+	uv run mypy agentring/ --strict --pretty
 
 check: lint typecheck test
 	@echo ""

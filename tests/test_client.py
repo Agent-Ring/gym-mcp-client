@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 
 class TestLocalMode:

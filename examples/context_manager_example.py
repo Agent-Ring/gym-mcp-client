@@ -1,6 +1,6 @@
 """Example showing the use of GymMCPClient with context managers."""
 
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 
 def run_with_context_manager(mode: str, **kwargs):

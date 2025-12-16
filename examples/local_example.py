@@ -1,6 +1,6 @@
 """Example of using GymMCPClient in local mode."""
 
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 
 def main():

@@ -1,5 +1,5 @@
 [project]
-name = "gym-mcp-client"
+name = "agentring"
 version = "0.1.0"
 description = "A unified interface for local and remote Gymnasium environments via gym-mcp-server"
 readme = "README.md"
@@ -30,8 +30,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://agentring.ai"
 Documentation = "https://agentring.ai"
-Repository = "https://github.com/Agent-Ring/gym-mcp-client"
-Issues = "https://github.com/Agent-Ring/gym-mcp-client/issues"
+Repository = "https://github.com/Agent-Ring/agentring"
+Issues = "https://github.com/Agent-Ring/agentring/issues"
 "Author LinkedIn" = "https://www.linkedin.com/in/haggaishachar/"
 
 [build-system]

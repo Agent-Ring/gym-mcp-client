@@ -4,7 +4,7 @@ Before running this example, start the gym-mcp-server:
     python -m gym_mcp_server --env CartPole-v1 --transport streamable-http --port 8000
 """
 
-from gym_mcp_client import GymMCPClient
+from agentring import GymMCPClient
 
 
 def main():
