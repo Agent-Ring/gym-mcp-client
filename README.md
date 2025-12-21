@@ -1,6 +1,6 @@
-# Gym MCP Client
+# AgentRing
 
-A unified Python interface for working with both local and remote Gymnasium environments via [gym-mcp-server](https://github.com/haggaishachar/gym-mcp-server).
+A unified Python client for working with both local and remote Gymnasium environments via [gym-mcp-server](https://github.com/haggaishachar/gym-mcp-server).
 
 **Goal**: Write code once, seamlessly switch between local development and remote execution.
 
@@ -12,15 +12,11 @@ A unified Python interface for working with both local and remote Gymnasium envi
 - 🔧 **Full Compatibility**: Supports all Gymnasium environment types (Box, Discrete, MultiBinary, etc.)
 - 🐍 **Modern Python**: Python 3.12+ with complete type hints
 - 📦 **Easy Setup**: Managed with uv for fast dependency management
-- ✅ **Well Tested**: 14 comprehensive tests, all passing
+- ✅ **Well Tested**: 19 comprehensive tests (18 passing)
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd agentring
-
 # Install with uv (recommended)
 uv sync
 
@@ -30,144 +26,57 @@ pip install -e .
 
 ## Quick Start
 
-### Local Mode
+### Complete Example
+
+Here's a complete example showing both modes with multiple episodes:
 
 ```python
-from agentring import GymMCPClient
+import agentring as gym
 
-# Create a local environment
-env = GymMCPClient("CartPole-v1", mode="local")
+# Choose mode: "local" or "remote"
+MODE = "local"  # Change to "remote" to use gym-mcp-server
+SERVER_URL = "http://localhost:8000" if MODE == "remote" else None
 
-# Use standard Gymnasium API
-observation, info = env.reset(seed=42)
-action = env.action_space.sample()
-observation, reward, terminated, truncated, info = env.step(action)
-
-env.close()
-```
-
-### Remote Mode
-
-First, start a gym-mcp-server:
-
-```bash
-python -m gym_mcp_server --env CartPole-v1 --transport streamable-http --port 8000
-```
-
-Then connect to it:
-
-```python
-from agentring import GymMCPClient
-
-# Create a remote environment
-env = GymMCPClient(
+# Create environment with context manager for automatic cleanup
+with gym.make(
     "CartPole-v1",
-    mode="remote",
-    gym_server_url="http://localhost:8000"
-)
+    mode=MODE,
+    gym_server_url=SERVER_URL,
+    render_mode="rgb_array"
+) as env:
+    print(f"Environment: {env}")
+    print(f"Mode: {MODE}")
+    print(f"Observation space: {env.observation_space}")
+    print(f"Action space: {env.action_space}")
+    print()
 
-# Use the exact same API as local mode!
-observation, info = env.reset(seed=42)
-action = env.action_space.sample()
-observation, reward, terminated, truncated, info = env.step(action)
+    # Run 3 episodes
+    for episode in range(3):
+        observation, info = env.reset(seed=42 + episode)
+        total_reward = 0
+        steps = 0
+        terminated = truncated = False
 
-env.close()
+        print(f"Episode {episode + 1}:")
+        print(f"  Initial observation: {observation}")
+
+        while not (terminated or truncated):
+            # Sample random action
+            action = env.action_space.sample()
+            observation, reward, terminated, truncated, info = env.step(action)
+
+            total_reward += reward
+            steps += 1
+
+            if steps >= 200:  # Safety limit
+                break
+
+        print(f"  Total reward: {total_reward}")
+        print(f"  Steps: {steps}")
+        print()
+
+print("Done!")
 ```
-
-### Context Manager
-
-```python
-from agentring import GymMCPClient
-
-# Automatic cleanup
-with GymMCPClient("CartPole-v1", mode="local") as env:
-    observation, info = env.reset()
-    action = env.action_space.sample()
-    observation, reward, terminated, truncated, info = env.step(action)
-    # env.close() called automatically
-```
-
-## Switching Between Modes
-
-The main benefit: write once, run anywhere!
-
-```python
-import os
-from agentring import GymMCPClient
-
-# Configuration from environment variables
-MODE = os.getenv("GYM_MODE", "local")
-SERVER_URL = os.getenv("GYM_SERVER_URL", "http://localhost:8000")
-
-# Create environment based on mode
-if MODE == "local":
-    env = GymMCPClient("CartPole-v1", mode="local")
-else:
-    env = GymMCPClient(
-        "CartPole-v1",
-        mode="remote",
-        gym_server_url=SERVER_URL,
-        gym_server_key=os.getenv("GYM_API_KEY")
-    )
-
-# Your code works the same regardless of mode!
-observation, info = env.reset()
-for _ in range(1000):
-    action = env.action_space.sample()
-    observation, reward, terminated, truncated, info = env.step(action)
-    if terminated or truncated:
-        observation, info = env.reset()
-
-env.close()
-```
-
-Switch modes via command line:
-
-```bash
-# Run locally
-export GYM_MODE=local
-python your_training_script.py
-
-# Run remotely
-export GYM_MODE=remote
-export GYM_SERVER_URL=http://gpu-server:8000
-python your_training_script.py
-```
-
-## API Reference
-
-### `GymMCPClient`
-
-```python
-GymMCPClient(
-    env_id: str,
-    mode: str = "local",
-    render_mode: str | None = None,
-    gym_server_url: str | None = None,
-    gym_server_key: str | None = None,
-    **kwargs
-)
-```
-
-**Parameters:**
-- `env_id`: Gymnasium environment ID (e.g., "CartPole-v1")
-- `mode`: Either "local" or "remote"
-- `render_mode`: Render mode ("rgb_array", "human", etc.)
-- `gym_server_url`: URL of gym-mcp-server (required for remote mode)
-- `gym_server_key`: Optional API key for authentication
-- `**kwargs`: Additional arguments passed to `gym.make()` in local mode
-
-**Methods:**
-- `reset(seed=None, options=None)` → (observation, info)
-- `step(action)` → (observation, reward, terminated, truncated, info)
-- `render()` → render_output
-- `close()` → None
-
-**Properties:**
-- `observation_space`: The observation space
-- `action_space`: The action space
-- `reward_range`: The reward range
-- `metadata`: Environment metadata
 
 ## Architecture
 
@@ -178,7 +87,7 @@ GymMCPClient(
          │
          ▼
 ┌─────────────────┐
-│ GymMCPClient    │
+│ gym.make    │
 └────────┬────────┘
          │
     ┌────┴────┐
@@ -214,23 +123,18 @@ GymMCPClient(
 
 ## Examples
 
-See the `examples/` directory:
-- `local_example.py`: Local mode usage
-- `remote_example.py`: Remote mode usage
-- `context_manager_example.py`: Context manager pattern
+See `quickstart.py` for a complete working example showing both local and remote modes.
 
-Run examples:
+Run the example:
 
 ```bash
-# Local mode
-uv run python examples/local_example.py
+# Local mode (default)
+uv run python quickstart.py
 
 # Remote mode (start server first!)
 python -m gym_mcp_server --env CartPole-v1 --transport streamable-http --port 8000
-uv run python examples/remote_example.py
-
-# Demo CLI tool
-python main.py --mode local --episodes 3
+# Then edit quickstart.py to set REMOTE_MODE = True and run:
+uv run python quickstart.py
 ```
 
 ## Development
@@ -262,7 +166,7 @@ make clean      # Clean build artifacts
 ```bash
 make test
 # Or: uv run pytest tests/ -v
-# 14 tests, all passing ✅
+# 19 tests (18 passing, 1 failing due to missing pygame) ✅
 ```
 
 ## Use Cases
@@ -285,11 +189,11 @@ make test
 ## Error Handling
 
 ```python
-from agentring import GymMCPClient
+import agentring as gym
 import httpx
 
 try:
-    env = GymMCPClient(
+    env = gym.make(
         "CartPole-v1",
         mode="remote",
         gym_server_url="http://localhost:8000"
@@ -334,7 +238,7 @@ uv add "gymnasium[mujoco]"
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.10+
 - gymnasium >= 1.2.1
 - httpx >= 0.28.1
 - numpy >= 2.0.0
@@ -370,4 +274,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 0.1.0 | **Python**: 3.12+
+**Status**: ✅ Production Ready | **Version**: 0.1.0 | **Python**: 3.12+ | **Tests**: 19 (18 passing)

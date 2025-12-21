@@ -1,9 +1,16 @@
-"""Tests for GymMCPClient."""
+"""Tests for AgentRingClient."""
+
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from agentring import GymMCPClient
+# When running from the monorepo root, the agentring package isn't installed.
+# Add the subproject root to sys.path so `import agentring` resolves.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from agentring.client import AgentRingClient
 
 
 class TestLocalMode:
@@ -11,7 +18,7 @@ class TestLocalMode:
 
     def test_initialization(self):
         """Test basic initialization in local mode."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         assert env.mode == "local"
         assert env.env_id == "CartPole-v1"
@@ -22,7 +29,7 @@ class TestLocalMode:
 
     def test_reset(self):
         """Test reset functionality."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
 
@@ -34,7 +41,7 @@ class TestLocalMode:
 
     def test_step(self):
         """Test step functionality."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
         action = env.action_space.sample()
@@ -51,7 +58,7 @@ class TestLocalMode:
 
     def test_render(self):
         """Test render functionality."""
-        env = GymMCPClient("CartPole-v1", mode="local", render_mode="rgb_array")
+        env = AgentRingClient("CartPole-v1", mode="local", render_mode="rgb_array")
 
         env.reset()
         render_output = env.render()
@@ -64,7 +71,7 @@ class TestLocalMode:
 
     def test_context_manager(self):
         """Test context manager functionality."""
-        with GymMCPClient("CartPole-v1", mode="local") as env:
+        with AgentRingClient("CartPole-v1", mode="local") as env:
             observation, info = env.reset()
             assert observation is not None
 
@@ -72,7 +79,7 @@ class TestLocalMode:
 
     def test_full_episode(self):
         """Test running a full episode."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
         total_reward = 0
@@ -94,10 +101,10 @@ class TestLocalMode:
 
     def test_repr(self):
         """Test string representation."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
         repr_str = repr(env)
 
-        assert "GymMCPClient" in repr_str
+        assert "AgentRingClient" in repr_str
         assert "CartPole-v1" in repr_str
         assert "local" in repr_str
 
@@ -105,7 +112,7 @@ class TestLocalMode:
 
     def test_unwrapped_property(self):
         """Test unwrapped property returns underlying environment."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # unwrapped should return the underlying gym environment
         unwrapped_env = env.unwrapped
@@ -121,7 +128,7 @@ class TestLocalMode:
     def test_unwrapped_recursive(self):
         """Test that unwrapped recursively unwraps nested wrappers."""
         # CartPole-v1 is wrapped by TimeLimit, so unwrapping should get the base CartPoleEnv
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # unwrapped should recursively unwrap to the base CartPole env
         unwrapped = env.unwrapped
@@ -137,7 +144,7 @@ class TestLocalMode:
 
     def test_getattr_forwarding(self):
         """Test that __getattr__ forwards to underlying environment."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # Standard Gymnasium attributes should work
         assert hasattr(env, "observation_space")
@@ -152,7 +159,7 @@ class TestLocalMode:
 
     def test_getattr_raises_for_dunder(self):
         """Test that __getattr__ doesn't forward dunder methods."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # Should raise AttributeError for dunder methods
         with pytest.raises(AttributeError):
@@ -162,7 +169,7 @@ class TestLocalMode:
 
     def test_getattr_raises_for_nonexistent(self):
         """Test that __getattr__ raises for non-existent attributes."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # Should raise AttributeError for non-existent attributes
         with pytest.raises(AttributeError):
@@ -177,12 +184,12 @@ class TestRemoteMode:
     def test_initialization_requires_url(self):
         """Test that remote mode requires gym_server_url."""
         with pytest.raises(ValueError, match="gym_server_url is required"):
-            GymMCPClient("CartPole-v1", mode="remote")
+            AgentRingClient("CartPole-v1", mode="remote")
 
     def test_invalid_mode(self):
         """Test that invalid mode raises error."""
         with pytest.raises(ValueError, match="Mode must be"):
-            GymMCPClient("CartPole-v1", mode="invalid")
+            AgentRingClient("CartPole-v1", mode="invalid")
 
     # Note: Additional remote tests would require a running gym-mcp-server
     # These are integration tests and should be run separately
@@ -193,7 +200,7 @@ class TestSpaceParsing:
 
     def test_box_space(self):
         """Test Box space creation in local mode."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         from gymnasium.spaces import Box
 
@@ -203,7 +210,7 @@ class TestSpaceParsing:
 
     def test_discrete_space(self):
         """Test Discrete space creation in local mode."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         from gymnasium.spaces import Discrete
 
@@ -217,7 +224,7 @@ class TestActionSerialization:
 
     def test_serialize_int_action(self):
         """Test serialization of integer actions."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         action = 1
         serialized = env._serialize_action(action)
@@ -227,7 +234,7 @@ class TestActionSerialization:
 
     def test_serialize_numpy_action(self):
         """Test serialization of numpy array actions."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         action = np.array([0.5, 0.3])
         serialized = env._serialize_action(action)
@@ -238,7 +245,7 @@ class TestActionSerialization:
 
     def test_serialize_list_action(self):
         """Test serialization of list actions."""
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         action = [1, 2, 3]
         serialized = env._serialize_action(action)

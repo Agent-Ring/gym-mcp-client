@@ -23,13 +23,13 @@ test:
 
 lint:
 	@echo "Running ruff linter..."
-	uv run ruff check agentring/ tests/ examples/
+	uv run ruff check agentring/ tests/
 
 format:
 	@echo "Formatting code with ruff..."
-	uv run ruff format agentring/ tests/ examples/
+	uv run ruff format agentring/ tests/
 	@echo "Auto-fixing linting issues..."
-	uv run ruff check --fix agentring/ tests/ examples/
+	uv run ruff check --fix agentring/ tests/
 
 typecheck:
 	@echo "Running mypy type checker..."
@@ -45,7 +45,7 @@ all: format check
 
 demo:
 	@echo "Running local demo..."
-	uv run python examples/local_example.py
+	uv run python quickstart.py
 
 clean:
 	@echo "Cleaning build artifacts and cache..."

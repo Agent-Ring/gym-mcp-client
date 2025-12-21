@@ -1,13 +1,13 @@
-"""GymMCPClient - A unified interface for local and remote Gymnasium environments."""
+"""AgentRingClient - A unified interface for local and remote Gymnasium environments."""
 
-from typing import Any, SupportsFloat
+from typing import Any, SupportsFloat, cast
 
 import gymnasium as gym
 import httpx
 import numpy as np
 
 
-class GymMCPClient:
+class AgentRingClient:
     """
     A Gymnasium-compatible client that works with both local and remote environments.
 
@@ -28,10 +28,10 @@ class GymMCPClient:
 
     Examples:
         # Local mode
-        env = GymMCPClient("CartPole-v1", mode="local")
+        env = AgentRingClient("CartPole-v1", mode="local")
 
         # Remote mode
-        env = GymMCPClient(
+        env = AgentRingClient(
             "CartPole-v1",
             mode="remote",
             gym_server_url="http://localhost:8000",
@@ -99,14 +99,26 @@ class GymMCPClient:
 
         # Fetch environment info from remote server
         try:
-            env_info = self._call_remote_tool("get_env_info", {})
-            if not env_info.get("success"):
+            result = self._call_remote_tool("get_env_info", {})
+            # Handle both REST response format (with env_info) and direct env_info
+            if "env_info" in result:
+                env_info = result["env_info"]
+            else:
+                env_info = result
+
+            if isinstance(env_info, dict) and not env_info.get("success", True):
                 raise RuntimeError(f"Failed to get environment info: {env_info.get('error')}")
 
             # Parse and store environment properties
             self._setup_remote_spaces(env_info)
-            self.reward_range = tuple(env_info.get("reward_range", (-float("inf"), float("inf"))))
-            self.metadata = env_info.get("metadata", {})
+            reward_range = env_info.get("reward_range")
+            if reward_range is None:
+                self.reward_range = (-float("inf"), float("inf"))
+            elif isinstance(reward_range, (list, tuple)) and len(reward_range) == 2:
+                self.reward_range = tuple(reward_range)
+            else:
+                self.reward_range = (-float("inf"), float("inf"))
+            self.metadata = env_info.get("metadata", {}) or {}
             self.spec = None  # Remote env spec not directly accessible
 
         except Exception as e:
@@ -115,13 +127,67 @@ class GymMCPClient:
 
     def _setup_remote_spaces(self, env_info: dict[str, Any]) -> None:
         """Setup observation and action spaces from remote environment info."""
-        # Parse observation space
-        obs_space_info = env_info.get("observation_space", {})
-        self.observation_space = self._parse_space(obs_space_info)
+        # Handle string representation of spaces (from REST API)
+        obs_space_str = env_info.get("observation_space", "")
+        action_space_str = env_info.get("action_space", "")
 
-        # Parse action space
-        action_space_info = env_info.get("action_space", {})
-        self.action_space = self._parse_space(action_space_info)
+        # For Text spaces, create appropriate Gymnasium spaces
+        if isinstance(obs_space_str, str) and "Text(" in obs_space_str:
+            # Extract parameters from Text(1, 1000000, ...)
+            import re
+
+            match = re.search(r"Text\((\d+),\s*(\d+),", obs_space_str)
+            if match:
+                min_length = int(match.group(1))
+                max_length = int(match.group(2))
+                # Use Text space if available
+                try:
+                    from gymnasium.spaces import Text
+
+                    self.observation_space = Text(min_length=min_length, max_length=max_length)
+                except (ImportError, AttributeError):
+                    # Fallback for older gymnasium versions
+                    self.observation_space = gym.spaces.Box(
+                        low=0, high=255, shape=(max_length,), dtype=np.uint8
+                    )
+            else:
+                self.observation_space = gym.spaces.Box(
+                    low=0, high=255, shape=(1000,), dtype=np.uint8
+                )
+        else:
+            # Try to parse as structured space info
+            obs_space_info = env_info.get("observation_space", {})
+            if isinstance(obs_space_info, dict):
+                self.observation_space = self._parse_space(obs_space_info)
+            else:
+                # Fallback
+                self.observation_space = gym.spaces.Box(
+                    low=0, high=255, shape=(1000,), dtype=np.uint8
+                )
+
+        if isinstance(action_space_str, str) and "Text(" in action_space_str:
+            import re
+
+            match = re.search(r"Text\((\d+),\s*(\d+),", action_space_str)
+            if match:
+                min_length = int(match.group(1))
+                max_length = int(match.group(2))
+                try:
+                    from gymnasium.spaces import Text
+
+                    self.action_space = Text(min_length=min_length, max_length=max_length)
+                except (ImportError, AttributeError):
+                    self.action_space = gym.spaces.Box(
+                        low=0, high=255, shape=(max_length,), dtype=np.uint8
+                    )
+            else:
+                self.action_space = gym.spaces.Box(low=0, high=255, shape=(100,), dtype=np.uint8)
+        else:
+            action_space_info = env_info.get("action_space", {})
+            if isinstance(action_space_info, dict):
+                self.action_space = self._parse_space(action_space_info)
+            else:
+                self.action_space = gym.spaces.Box(low=0, high=255, shape=(100,), dtype=np.uint8)
 
     def _parse_space(self, space_info: dict[str, Any]) -> gym.Space[Any]:
         """Parse space information from JSON to Gymnasium Space objects."""
@@ -131,7 +197,19 @@ class GymMCPClient:
             low = np.array(space_info["low"])
             high = np.array(space_info["high"])
             shape = tuple(space_info["shape"])
-            dtype = np.dtype(space_info.get("dtype", "float32"))
+            dtype_str = space_info.get("dtype", "float32")
+            # Convert string dtype to numpy type for gymnasium compatibility
+            dtype: type[np.floating[Any]] | type[np.integer[Any]]
+            if dtype_str == "float32":
+                dtype = np.float32
+            elif dtype_str == "float64":
+                dtype = np.float64
+            elif dtype_str == "int32":
+                dtype = np.int32
+            elif dtype_str == "int64":
+                dtype = np.int64
+            else:
+                dtype = np.float32  # fallback
             return gym.spaces.Box(low=low, high=high, shape=shape, dtype=dtype)
 
         elif space_type == "Discrete":
@@ -160,17 +238,43 @@ class GymMCPClient:
 
     def _call_remote_tool(self, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
         """Make an HTTP call to the remote gym-mcp-server."""
-        url = f"{self.gym_server_url}/mcp/v1/tools/{tool_name}/call"
+        # Map tool names to REST endpoints
+        endpoint_map = {
+            "get_env_info": "/info",
+            "reset_env": "/reset",
+            "step_env": "/step",
+            "render_env": "/render",
+            "close_env": "/close",
+        }
 
-        payload = {"params": params}
+        # Use REST endpoint if available, otherwise fall back to MCP
+        if tool_name in endpoint_map:
+            url = f"{self.gym_server_url}{endpoint_map[tool_name]}"
+            method = "GET" if tool_name == "get_env_info" else "POST"
 
-        try:
-            response = self.client.post(url, json=payload, headers=self._headers)
-            response.raise_for_status()
-            result: dict[str, Any] = response.json()
-            return result
-        except httpx.HTTPError as e:
-            raise RuntimeError(f"Remote call failed: {e}") from e
+            try:
+                if method == "GET":
+                    response = self.client.get(url, headers=self._headers)
+                else:
+                    response = self.client.post(url, json=params, headers=self._headers)
+                response.raise_for_status()
+                result = cast(dict[str, Any], response.json())
+                # For get_env_info, return the full result (contains env_info key)
+                return result
+            except httpx.HTTPError as e:
+                raise RuntimeError(f"Remote call failed: {e}") from e
+        else:
+            # Fallback to MCP endpoint
+            url = f"{self.gym_server_url}/mcp/v1/tools/{tool_name}/call"
+            payload = {"params": params}
+
+            try:
+                response = self.client.post(url, json=payload, headers=self._headers)
+                response.raise_for_status()
+                result = cast(dict[str, Any], response.json())
+                return result
+            except httpx.HTTPError as e:
+                raise RuntimeError(f"Remote call failed: {e}") from e
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -267,7 +371,7 @@ class GymMCPClient:
     def close(self) -> None:
         """Close the environment and clean up resources."""
         if self.mode == "local":
-            self.env.close()  # type: ignore[no-untyped-call]
+            self.env.close()
         else:
             try:
                 self._call_remote_tool("close_env", {})
@@ -316,7 +420,7 @@ class GymMCPClient:
 
         return observation
 
-    def __enter__(self) -> "GymMCPClient":
+    def __enter__(self) -> "AgentRingClient":
         """Context manager entry."""
         return self
 
@@ -347,9 +451,8 @@ class GymMCPClient:
                 env = unwrapped
             return env
         elif self.mode == "remote":
-            # For remote mode, unwrapped might be the same as env or None
-            # depending on the remote server's implementation
-            return self.env if hasattr(self.env, "unwrapped") else None
+            # For remote mode, there is no underlying environment to unwrap
+            return None
         else:
             return self.env
 
@@ -358,7 +461,7 @@ class GymMCPClient:
         Forward attribute access to the underlying environment.
 
         This allows transparent access to custom attributes and methods
-        of the wrapped environment, making GymMCPClient fully compatible
+        of the wrapped environment, making AgentRingClient fully compatible
         with code that expects direct access to environment internals.
 
         Args:
@@ -386,4 +489,4 @@ class GymMCPClient:
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __repr__(self) -> str:
-        return f"GymMCPClient(env_id='{self.env_id}', mode='{self.mode}')"
+        return f"AgentRingClient(env_id='{self.env_id}', mode='{self.mode}')"
