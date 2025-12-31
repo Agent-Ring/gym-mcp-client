@@ -1,4 +1,4 @@
-.PHONY: help install test demo clean lint format typecheck check all
+.PHONY: help install test quickstart clean lint format typecheck check all
 
 help:
 	@echo "Available commands:"
@@ -9,7 +9,7 @@ help:
 	@echo "  make typecheck  - Run mypy type checker"
 	@echo "  make check      - Run all checks (lint + typecheck + test)"
 	@echo "  make all        - Format, then run all checks"
-	@echo "  make demo       - Run local demo"
+	@echo "  make quickstart - Run quickstart example (with remote server)"
 	@echo "  make clean      - Clean build artifacts and cache"
 
 install:
@@ -43,8 +43,8 @@ all: format check
 	@echo ""
 	@echo "✅ Format and all checks completed!"
 
-demo:
-	@echo "Running local demo..."
+quickstart:
+	@echo "Running quickstart example..."
 	uv run python quickstart.py
 
 clean:

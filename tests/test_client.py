@@ -1,7 +1,8 @@
-"""Tests for AgentRingClient."""
+"""Tests for AgentRingEnv."""
 
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -10,7 +11,7 @@ import pytest
 # Add the subproject root to sys.path so `import agentring` resolves.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agentring.client import AgentRingClient
+from agentring.env import AgentRingEnv
 
 
 class TestLocalMode:
@@ -18,7 +19,7 @@ class TestLocalMode:
 
     def test_initialization(self):
         """Test basic initialization in local mode."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         assert env.mode == "local"
         assert env.env_id == "CartPole-v1"
@@ -29,7 +30,7 @@ class TestLocalMode:
 
     def test_reset(self):
         """Test reset functionality."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
 
@@ -41,7 +42,7 @@ class TestLocalMode:
 
     def test_step(self):
         """Test step functionality."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
         action = env.action_space.sample()
@@ -58,7 +59,7 @@ class TestLocalMode:
 
     def test_render(self):
         """Test render functionality."""
-        env = AgentRingClient("CartPole-v1", mode="local", render_mode="rgb_array")
+        env = AgentRingEnv("CartPole-v1", mode="local", render_mode="rgb_array")
 
         env.reset()
         render_output = env.render()
@@ -71,7 +72,7 @@ class TestLocalMode:
 
     def test_context_manager(self):
         """Test context manager functionality."""
-        with AgentRingClient("CartPole-v1", mode="local") as env:
+        with AgentRingEnv("CartPole-v1", mode="local") as env:
             observation, info = env.reset()
             assert observation is not None
 
@@ -79,7 +80,7 @@ class TestLocalMode:
 
     def test_full_episode(self):
         """Test running a full episode."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         observation, info = env.reset(seed=42)
         total_reward = 0
@@ -101,10 +102,10 @@ class TestLocalMode:
 
     def test_repr(self):
         """Test string representation."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
         repr_str = repr(env)
 
-        assert "AgentRingClient" in repr_str
+        assert "AgentRingEnv" in repr_str
         assert "CartPole-v1" in repr_str
         assert "local" in repr_str
 
@@ -112,7 +113,7 @@ class TestLocalMode:
 
     def test_unwrapped_property(self):
         """Test unwrapped property returns underlying environment."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         # unwrapped should return the underlying gym environment
         unwrapped_env = env.unwrapped
@@ -128,7 +129,7 @@ class TestLocalMode:
     def test_unwrapped_recursive(self):
         """Test that unwrapped recursively unwraps nested wrappers."""
         # CartPole-v1 is wrapped by TimeLimit, so unwrapping should get the base CartPoleEnv
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         # unwrapped should recursively unwrap to the base CartPole env
         unwrapped = env.unwrapped
@@ -144,7 +145,7 @@ class TestLocalMode:
 
     def test_getattr_forwarding(self):
         """Test that __getattr__ forwards to underlying environment."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         # Standard Gymnasium attributes should work
         assert hasattr(env, "observation_space")
@@ -159,7 +160,7 @@ class TestLocalMode:
 
     def test_getattr_raises_for_dunder(self):
         """Test that __getattr__ doesn't forward dunder methods."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         # Should raise AttributeError for dunder methods
         with pytest.raises(AttributeError):
@@ -169,7 +170,7 @@ class TestLocalMode:
 
     def test_getattr_raises_for_nonexistent(self):
         """Test that __getattr__ raises for non-existent attributes."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         # Should raise AttributeError for non-existent attributes
         with pytest.raises(AttributeError):
@@ -184,15 +185,146 @@ class TestRemoteMode:
     def test_initialization_requires_url(self):
         """Test that remote mode requires gym_server_url."""
         with pytest.raises(ValueError, match="gym_server_url is required"):
-            AgentRingClient("CartPole-v1", mode="remote")
+            AgentRingEnv("CartPole-v1", mode="remote")
 
     def test_invalid_mode(self):
         """Test that invalid mode raises error."""
         with pytest.raises(ValueError, match="Mode must be"):
-            AgentRingClient("CartPole-v1", mode="invalid")
+            AgentRingEnv("CartPole-v1", mode="invalid")
 
-    # Note: Additional remote tests would require a running gym-mcp-server
-    # These are integration tests and should be run separately
+    def test_env_checker_remote(self):
+        """Test that remote environment passes gymnasium's env_checker validation."""
+        from gymnasium.utils.env_checker import check_env
+
+        gym_server_url = "http://localhost:8001"
+
+        # Mock HTTP responses for remote environment
+        def create_mock_response(response_data):
+            """Create a mock httpx response."""
+            mock_response = MagicMock()
+            mock_response.json.return_value = response_data
+            mock_response.raise_for_status = MagicMock()
+            mock_response.status_code = 200
+            return mock_response
+
+        def mock_get(url, **kwargs):
+            """Mock GET requests."""
+            path = url.split(gym_server_url)[1] if gym_server_url in str(url) else str(url)
+            if "/info" in path:
+                return create_mock_response(
+                    {
+                        "env_info": {
+                            "observation_space": {
+                                "type": "Discrete",
+                                "n": 16,
+                            },
+                            "action_space": {
+                                "type": "Discrete",
+                                "n": 4,
+                            },
+                            "reward_range": [-float("inf"), float("inf")],
+                            "metadata": {
+                                "render_modes": ["rgb_array", "ansi"],
+                                "render_fps": 4,
+                            },
+                        },
+                    }
+                )
+            elif "/run/status" in path:
+                return create_mock_response(
+                    {
+                        "run_id": "test-run-123",
+                        "state": "running",
+                        "current_episode": 1,
+                    }
+                )
+            elif "/run/statistics" in path:
+                return create_mock_response(
+                    {
+                        "run_id": "test-run-123",
+                        "state": "running",
+                        "current_episode": 1,
+                        "completed_episodes": 0,
+                        "total_steps": 0,
+                        "total_reward": 0.0,
+                        "average_reward": 0.0,
+                        "average_steps": 0.0,
+                        "success_rate": 0.0,
+                        "successful_episodes": 0,
+                        "episodes": [],
+                    }
+                )
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"success": False, "error": "Not found"}
+            mock_response.raise_for_status = MagicMock()
+            mock_response.status_code = 404
+            return mock_response
+
+        def mock_post(url, **kwargs):
+            """Mock POST requests."""
+            path = url.split(gym_server_url)[1] if gym_server_url in str(url) else str(url)
+            if "/reset" in path:
+                return create_mock_response(
+                    {
+                        "success": True,
+                        "observation": 0,
+                        "info": {},
+                        "run_progress": {"episode_num": 1},
+                    }
+                )
+            elif "/step" in path:
+                return create_mock_response(
+                    {
+                        "success": True,
+                        "observation": 1,
+                        "reward": 0.0,
+                        "terminated": False,
+                        "truncated": False,
+                        "info": {},
+                    }
+                )
+            elif "/render" in path:
+                # Create a proper RGB array with uint8 values
+                # Shape: (400, 600, 3) for RGB image
+                render_array = np.zeros((400, 600, 3), dtype=np.uint8)
+                # Convert to list for JSON serialization (numpy arrays are converted to lists)
+                return create_mock_response(
+                    {
+                        "success": True,
+                        "render": render_array.tolist(),  # Mock RGB array as list
+                    }
+                )
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"success": False, "error": "Not found"}
+            mock_response.raise_for_status = MagicMock()
+            mock_response.status_code = 404
+            return mock_response
+
+        # Create a mock client
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(side_effect=mock_get)
+        mock_client.post = MagicMock(side_effect=mock_post)
+        mock_client.close = MagicMock()
+
+        # Create remote environment with mocked HTTP client
+        with patch("httpx.Client", return_value=mock_client):
+            env = AgentRingEnv(
+                "FrozenLake-v1",
+                mode="remote",
+                render_mode="rgb_array",
+                gym_server_url=gym_server_url,
+            )
+
+            try:
+                # Run the environment checker
+                # This validates:
+                # - Observation and action spaces
+                # - Reset and step methods
+                # - Render method (if render_mode is set)
+                # - Other Gymnasium API compliance checks
+                check_env(env, skip_render_check=False)
+            finally:
+                env.close()
 
 
 class TestSpaceParsing:
@@ -200,7 +332,7 @@ class TestSpaceParsing:
 
     def test_box_space(self):
         """Test Box space creation in local mode."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         from gymnasium.spaces import Box
 
@@ -210,7 +342,7 @@ class TestSpaceParsing:
 
     def test_discrete_space(self):
         """Test Discrete space creation in local mode."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         from gymnasium.spaces import Discrete
 
@@ -224,7 +356,7 @@ class TestActionSerialization:
 
     def test_serialize_int_action(self):
         """Test serialization of integer actions."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         action = 1
         serialized = env._serialize_action(action)
@@ -234,7 +366,7 @@ class TestActionSerialization:
 
     def test_serialize_numpy_action(self):
         """Test serialization of numpy array actions."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         action = np.array([0.5, 0.3])
         serialized = env._serialize_action(action)
@@ -245,7 +377,7 @@ class TestActionSerialization:
 
     def test_serialize_list_action(self):
         """Test serialization of list actions."""
-        env = AgentRingClient("CartPole-v1", mode="local")
+        env = AgentRingEnv("CartPole-v1", mode="local")
 
         action = [1, 2, 3]
         serialized = env._serialize_action(action)

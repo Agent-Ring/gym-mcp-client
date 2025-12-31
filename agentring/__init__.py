@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 import gymnasium as _gym
 
 if TYPE_CHECKING:
-    from agentring.client import AgentRingClient
+    from agentring.env import AgentRingEnv
 
 __version__ = "0.1.0"
 
@@ -30,7 +30,7 @@ def make(
     gym_server_url: str | None = None,
     gym_server_key: str | None = None,
     **kwargs: Any,
-) -> AgentRingClient:
+) -> AgentRingEnv:
     """
     Create a Gymnasium environment.
 
@@ -42,23 +42,27 @@ def make(
         id: The environment ID (e.g., "CartPole-v1")
         mode: Either "local" or "remote"
         render_mode: The render mode for the environment
-        gym_server_url: URL for remote gym-mcp-server (required for remote mode)
+        gym_server_url: URL for remote gym-mcp-server (required for remote mode, optional if GYM_SERVER_URL env var is set)
         gym_server_key: Optional API key for remote server authentication
         **kwargs: Additional arguments passed to the environment
 
     Returns:
-        An AgentRingClient instance that provides the standard Gymnasium API
+        An AgentRingEnv instance that provides the standard Gymnasium API
 
     Examples:
         # Local environment
         env = gym.make("CartPole-v1")
 
-        # Remote environment
+        # Remote environment with explicit URL
         env = gym.make("CartPole-v1", mode="remote", gym_server_url="http://localhost:8000")
-    """
-    from agentring.client import AgentRingClient
 
-    return AgentRingClient(
+        # Remote environment using environment variable
+        # export GYM_SERVER_URL="http://localhost:8000"
+        env = gym.make("CartPole-v1", mode="remote")  # Uses GYM_SERVER_URL env var
+    """
+    from agentring.env import AgentRingEnv
+
+    return AgentRingEnv(
         env_id=id,
         mode=mode,
         render_mode=render_mode,
@@ -66,14 +70,6 @@ def make(
         gym_server_key=gym_server_key,
         **kwargs,
     )
-
-
-# MCP extensions for agent development
-try:
-    from agentring import mcp
-except ImportError:
-    # MCP extensions are optional
-    mcp = None
 
 
 __all__ = [
@@ -87,5 +83,4 @@ __all__ = [
     "error",
     "logger",
     "utils",
-    "mcp",
 ]
