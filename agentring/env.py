@@ -1,7 +1,8 @@
 """AgentRingEnv - A unified interface for local and remote Gymnasium environments."""
 
+import json
 import uuid
-from typing import Any, SupportsFloat, cast
+from typing import Any, Optional, SupportsFloat, Union, cast
 
 import gymnasium as gym
 import httpx
@@ -771,6 +772,91 @@ class AgentRingEnv(gym.Env[Any, Any]):
             return getattr(self.env, name)
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def _get_action_type_from_space(self, action_space: gym.Space[Any]) -> type:
+        """Determine the appropriate type annotation from an action space.
+        
+        Args:
+            action_space: The Gymnasium action space
+            
+        Returns:
+            The appropriate type for the action parameter
+        """
+        # Discrete spaces use integers
+        if isinstance(action_space, gym.spaces.Discrete):
+            return int
+        
+        # Text spaces use strings
+        if hasattr(gym.spaces, 'Text') and isinstance(action_space, gym.spaces.Text):
+            return str
+        
+        # Box, MultiDiscrete, MultiBinary use arrays (lists)
+        if isinstance(action_space, (
+            gym.spaces.Box,
+            gym.spaces.MultiDiscrete,
+            gym.spaces.MultiBinary,
+        )):
+            return list
+        
+        # For Tuple and Dict spaces, we need to be more flexible
+        # Use a Union type that covers common cases
+        if isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+            return Union[int, float, list, dict]
+        
+        # Fallback to int for unknown spaces (most common case)
+        return int
+
+    def create_env_tools(self) -> list[Any]:
+        """Create SDK-agnostic environment tools from this environment instance.
+        
+        Returns plain functions that can be decorated/wrapped by the caller
+        for use with any agent framework (OpenAI Agents SDK, LangChain, etc.).
+        
+        The step_env function will have appropriate type annotations based on
+        the environment's action space type.
+        
+        Returns:
+            A list of functions: [reset_env, step_env, get_env_info]
+        """
+        def _format_obs(obs: Any) -> str:
+            """Format observation for display."""
+            if hasattr(obs, 'tolist'):  # numpy array
+                return json.dumps(obs.tolist())
+            return json.dumps(obs, default=str)
+        
+        def reset_env(seed: Optional[int] = None) -> str:
+            """Reset the environment to its initial state."""
+            obs, info = self.reset(seed=seed)
+            return f"Observation: {_format_obs(obs)}\nInfo: {json.dumps(info, default=str)}"
+        
+        # Create step_env with type annotation based on action space
+        action_type = self._get_action_type_from_space(self.action_space)
+        
+        # Create the function with proper type annotation
+        def step_env(action: action_type) -> str:  # type: ignore[valid-type]
+            """Take an action in the environment."""
+            obs, reward, terminated, truncated, info = self.step(action)
+            done = terminated or truncated
+            return (
+                f"Observation: {_format_obs(obs)}\n"
+                f"Reward: {reward}\n"
+                f"Terminated: {terminated}, Truncated: {truncated}\n"
+                f"Done: {done}\n"
+                f"Info: {json.dumps(info, default=str)}"
+            )
+        
+        # Set the annotation explicitly using __annotations__
+        step_env.__annotations__ = {'action': action_type, 'return': str}
+        
+        def get_env_info() -> str:
+            """Get information about the environment."""
+            return json.dumps({
+                "env_id": self.env_id,
+                "action_space": str(self.action_space),
+                "observation_space": str(self.observation_space),
+            }, indent=2)
+        
+        return [reset_env, step_env, get_env_info]
 
     def __repr__(self) -> str:
         return f"AgentRingEnv(env_id='{self.env_id}', mode='{self.mode}')"
